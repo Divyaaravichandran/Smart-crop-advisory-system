@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const db = require('./database');
 const { generateDummyData } = require('./dummyData');
+const csvDataService = require('../app/services/csvDataService');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,17 +17,12 @@ generateDummyData();
 app.get('/api/weather/current', (req, res) => {
   const { location } = req.query;
   
-  db.get(
-    'SELECT * FROM weather_data WHERE location = ? ORDER BY date DESC LIMIT 1',
-    [location || 'Default Location'],
-    (err, row) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json(row || {});
-    }
-  );
+  try {
+    const weatherData = csvDataService.getWeatherData(location || 'Default Location');
+    res.json(weatherData || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/weather/forecast', (req, res) => {
@@ -49,96 +45,71 @@ app.get('/api/weather/forecast', (req, res) => {
 app.get('/api/soil/health', (req, res) => {
   const { location } = req.query;
   
-  db.get(
-    'SELECT * FROM soil_data WHERE location = ? ORDER BY test_date DESC LIMIT 1',
-    [location || 'Default Location'],
-    (err, row) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json(row || {});
-    }
-  );
+  try {
+    const soilData = csvDataService.getSoilData(location || 'Default Location');
+    res.json(soilData || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Crop yield API endpoints
 app.get('/api/crops/yield', (req, res) => {
   const { sensor_id, limit = 10 } = req.query;
   
-  let query = 'SELECT * FROM crop_data ORDER BY timestamp DESC';
-  let params = [];
-  
-  if (sensor_id) {
-    query = 'SELECT * FROM crop_data WHERE sensor_id = ? ORDER BY timestamp DESC';
-    params = [sensor_id];
-  }
-  
-  query += ` LIMIT ${parseInt(limit)}`;
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+  try {
+    let yieldData = csvDataService.getYieldData(parseInt(limit));
+    
+    if (sensor_id) {
+      yieldData = yieldData.filter(row => row.sensor_id === sensor_id);
     }
-    res.json(rows || []);
-  });
+    
+    res.json(yieldData || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Pest and disease API endpoints
 app.get('/api/pests-diseases', (req, res) => {
   const { crop_type, severity } = req.query;
   
-  let query = 'SELECT * FROM pest_disease_data WHERE 1=1';
-  let params = [];
-  
-  if (crop_type) {
-    query += ' AND crop_type = ?';
-    params.push(crop_type);
-  }
-  
-  if (severity) {
-    query += ' AND severity = ?';
-    params.push(severity);
-  }
-  
-  query += ' ORDER BY date_reported DESC LIMIT 20';
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+  try {
+    let pestData = csvDataService.getPestData();
+    
+    if (crop_type) {
+      pestData = pestData.filter(row => row.crop_type === crop_type);
     }
-    res.json(rows || []);
-  });
+    
+    if (severity) {
+      pestData = pestData.filter(row => row.severity === severity);
+    }
+    
+    res.json(pestData || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Advisory recommendations API endpoints
 app.get('/api/advisory/recommendations', (req, res) => {
   const { farmer_id, status } = req.query;
   
-  let query = 'SELECT * FROM advisory_recommendations WHERE 1=1';
-  let params = [];
-  
-  if (farmer_id) {
-    query += ' AND farmer_id = ?';
-    params.push(farmer_id);
-  }
-  
-  if (status) {
-    query += ' AND status = ?';
-    params.push(status);
-  }
-  
-  query += ' ORDER BY created_at DESC';
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+  try {
+    let advisoryData = csvDataService.getAdvisoryData();
+    
+    if (farmer_id) {
+      advisoryData = advisoryData.filter(row => row.farmer_id === farmer_id);
     }
-    res.json(rows || []);
-  });
+    
+    if (status) {
+      advisoryData = advisoryData.filter(row => row.status === status);
+    }
+    
+    res.json(advisoryData || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/advisory/recommendations', (req, res) => {
